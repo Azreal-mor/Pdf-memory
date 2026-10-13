@@ -354,6 +354,84 @@ $("share").addEventListener("click",async()=>{
  }catch(err){console.error(err);setMessage(err.message||"Speichern fehlgeschlagen. Bitte prüfe deine Supabase-Einstellungen.")}
  finally{btn.disabled=!user}
 });
-$("copy").addEventListener("click",async()=>{
- try{await navigator.clipboard.writeText($("link").value);setMessage("Link kopiert.")}
- catch(err){$("link").select();setMess
+
+$("copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("link").value);
+    setMessage("Link kopiert.");
+  } catch (err) {
+    $("link").focus();
+    $("link").select();
+    setMessage("Bitte kopiere den markierten Link manuell.");
+  }
+});
+
+async function loadSharedGame() {
+  const gameId = new URLSearchParams(location.search).get("game");
+
+  if (!gameId) {
+    renderCards();
+    updateAuthUI();
+    return;
+  }
+
+  studentMode = true;
+  $("authSection").classList.add("hidden");
+  $("uploadSection").classList.add("hidden");
+  $("editorSection").classList.add("hidden");
+  $("studentNotice").classList.remove("hidden");
+
+  if (!supabase) {
+    $("studentNotice").textContent =
+      "Das Spiel konnte nicht geladen werden. Die Verbindung zu Supabase fehlt.";
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("memory_games")
+      .select("id,title,cards")
+      .eq("id", gameId)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (!data || !Array.isArray(data.cards)) {
+      $("studentNotice").textContent =
+        "Dieses Spiel wurde nicht gefunden oder kann nicht geladen werden.";
+      return;
+    }
+
+    cards = data.cards.map((card, index) => ({
+      ...card,
+      id: String(card.id ?? index + 1),
+      pair: String(card.pair ?? "1")
+    }));
+
+    $("gameTitle").value = data.title || "Mein Memory";
+
+    if (validPairs().length === 0) {
+      $("studentNotice").textContent =
+        "Dieses Spiel enthält keine gültigen Kartenpaare.";
+      return;
+    }
+
+    $("studentNotice").classList.add("hidden");
+    startGame();
+
+  } catch (err) {
+    console.error("Fehler beim Laden des Spiels:", err);
+    $("studentNotice").textContent =
+      "Das Spiel konnte nicht geladen werden. Bitte prüfe die Verbindung und die Supabase-Leserechte.";
+  }
+}
+
+loadSharedGame().catch(err => {
+  console.error("Startfehler:", err);
+  $("status").textContent = "Fehler beim Starten: " + err.message;
+});
+
+})();
+</script>
+</body>
+</html>
