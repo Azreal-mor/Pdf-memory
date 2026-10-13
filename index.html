@@ -62,12 +62,10 @@ label{display:block;font-weight:bold;margin-top:8px}
 </div>
 <p id="authStatus" class="hint" aria-live="polite"></p>
 </section>
-
 <section id="studentNotice" class="hidden">
 <h2>Memory-Spiel</h2>
 <p class="hint">Du kannst dieses Spiel ohne Anmeldung spielen.</p>
 </section>
-
 <section id="uploadSection">
 <h2>1. PDF laden und Inhalte auswählen</h2>
 <p class="hint">Zum Erstellen und Speichern musst du als Lehrer angemeldet sein. Du kannst Text markieren und hinzufügen oder mit dem Finger einen Bildbereich ausschneiden.</p>
@@ -75,12 +73,11 @@ label{display:block;font-weight:bold;margin-top:8px}
 <p id="status" aria-live="polite">Wähle eine PDF aus.</p>
 <div id="pages"></div>
 </section>
-
 <section id="editorSection">
 <h2>2. Memory-Karten erstellen</h2>
 <label for="gameTitle">Name des Spiels</label>
 <input id="gameTitle" maxlength="200" value="Mein Memory" placeholder="Name des Spiels">
-<p class="hint">Markiere Text im Textfeld einer PDF-Seite und nutze die Text-Schaltfläche. Für Bilder ziehst du mit dem Finger einen Rahmen über den gewünschten Bereich.</p>
+<p class="hint">Markiere zusammengehörige Inhalte. Für Bilder ziehst du mit dem Finger einen Rahmen über den gewünschten Bereich.</p>
 <label for="size">Kartengröße</label>
 <select id="size"><option value="small">Klein</option><option value="medium" selected>Mittel</option><option value="large">Groß</option></select>
 <label for="limit">Gewünschte Paare im Spiel</label>
@@ -91,7 +88,7 @@ label{display:block;font-weight:bold;margin-top:8px}
 </div>
 <p id="selectstatus" class="hint" aria-live="polite"></p>
 <h3>Deine Karten</h3>
-<p class="hint">Gib zusammengehörigen Karten dieselbe Paar-Nummer. Ein Paar besteht aus genau zwei Karten. Beispiel: zwei Karten mit Nummer 1 bilden ein Paar.</p>
+<p class="hint">Gib zusammengehörigen Karten dieselbe Paar-Nummer. Ein Paar besteht aus genau zwei Karten.</p>
 <div id="cards"></div>
 <div class="toolbar">
 <button id="play">Memory starten</button>
@@ -105,7 +102,6 @@ label{display:block;font-weight:bold;margin-top:8px}
 <p class="hint">Der Link enthält nur die Spiel-ID. Kartentexte und Bilder werden in Supabase gespeichert.</p>
 </div>
 </section>
-
 <section id="game" class="hidden">
 <h2 id="gameTitleHeading">3. Memory spielen</h2>
 <p id="score">Züge: 0 · Paare: 0</p>
@@ -122,326 +118,242 @@ label{display:block;font-weight:bold;margin-top:8px}
 <script>
 (() => {
 "use strict";
-
-/* WICHTIG: Trage hier deine Supabase Project URL und deinen Publishable Key ein.
-   Niemals den Secret Key oder service_role-Key in diesen Code schreiben. */
-const SUPABASE_URL = "HIER_DEINE_SUPABASE_PROJECT_URL_EINTRAGEN";https://pojrqlwesdkigyfpvuki.supabase.co/rest/v1/
-const SUPABASE_PUBLISHABLE_KEY = "HIER_DEINEN_SB_PUBLISHABLE_KEY_EINTRAGEN";sb_publishable_2KkHkIdQEmPXDx1U6lW6KQ_sR6_lwP3
+const SUPABASE_URL = "https://pojrqlwesdkigyfpvuki.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_2KkHkIdQEmPXDx1U6lW6KQ_sR6_lwP3";
 const BUCKET = "memory-images";
-
 const $ = id => document.getElementById(id);
 const pdfInput=$("pdf"),pages=$("pages"),status=$("status");
 const cardsBox=$("cards"),message=$("message");
-let supabase=null, user=null;
-let cards=[],nextId=1,turns=0,found=new Set();
+let supabase=null,user=null,cards=[],nextId=1,turns=0,found=new Set();
 let deck=[],open=[],busy=false,selectedPairCount=0,studentMode=false;
-
-const configReady = SUPABASE_URL.startsWith("https://") &&
-  !SUPABASE_URL.includes("HIER_") &&
-  SUPABASE_PUBLISHABLE_KEY.startsWith("sb_publishable_") &&
-  !SUPABASE_PUBLISHABLE_KEY.includes("HIER_");
-
-if (window.supabase && configReady) {
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-} else {
-  $("authStatus").textContent = "Bitte zuerst SUPABASE_URL und SUPABASE_PUBLISHABLE_KEY oben im Code eintragen.";
-  $("login").disabled = true;
-  $("share").disabled = true;
-}
-if(!window.pdfjsLib){
-  status.textContent="PDF-Bibliothek nicht geladen. Prüfe deine Internetverbindung.";
-  pdfInput.disabled=true;
-} else {
-  pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-}
-
-function setAuthMessage(text){$("authStatus").textContent=text;}
-function setMessage(text){message.textContent=text;}
+const configReady=SUPABASE_URL.startsWith("https://")&&!SUPABASE_PUBLISHABLE_KEY.includes("HIER_")&&SUPABASE_PUBLISHABLE_KEY.startsWith("sb_publishable_");
+if(window.supabase&&configReady){supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY)}
+else{$("authStatus").textContent="Bitte zuerst den Supabase Publishable Key oben im Code eintragen.";$("login").disabled=true;$("share").disabled=true}
+if(!window.pdfjsLib){status.textContent="PDF-Bibliothek nicht geladen. Prüfe deine Internetverbindung.";pdfInput.disabled=true}
+else{pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"}
+function setAuthMessage(t){$("authStatus").textContent=t}
+function setMessage(t){message.textContent=t}
 function updateAuthUI(){
-  const signedIn=!!user;
-  $("loginForm").classList.toggle("hidden",signedIn);
-  $("signedIn").classList.toggle("hidden",!signedIn);
-  $("signedInText").textContent=signedIn ? "Angemeldet als "+(user.email||"Lehrer") : "";
-  $("share").disabled=!signedIn || studentMode;
-  $("manual").disabled=!signedIn || studentMode;
-  $("selected").disabled=!signedIn || studentMode || !pdfInput.files.length;
-  pdfInput.disabled=!signedIn || studentMode || !window.pdfjsLib;
-  $("gameTitle").disabled=!signedIn || studentMode;
-  $("size").disabled=studentMode;
-  $("limit").disabled=studentMode;
-  if(!signedIn && !studentMode) setAuthMessage("Bitte anmelden, um Karten zu erstellen und Spiele zu speichern.");
+ const signedIn=!!user;
+ $("loginForm").classList.toggle("hidden",signedIn);
+ $("signedIn").classList.toggle("hidden",!signedIn);
+ $("signedInText").textContent=signedIn?"Angemeldet als "+(user.email||"Lehrer"):"";
+ $("share").disabled=!signedIn||studentMode;
+ $("manual").disabled=!signedIn||studentMode;
+ $("selected").disabled=!signedIn||studentMode||!pdfInput.files.length;
+ pdfInput.disabled=!signedIn||studentMode||!window.pdfjsLib;
+ $("gameTitle").disabled=!signedIn||studentMode;
+ $("size").disabled=studentMode;$("limit").disabled=studentMode;
+ if(!signedIn&&!studentMode)setAuthMessage("Bitte anmelden, um Karten zu erstellen und Spiele zu speichern.")
 }
 async function refreshSession(){
-  if(!supabase)return;
-  const {data,error}=await supabase.auth.getSession();
-  if(error){setAuthMessage("Anmeldestatus konnte nicht geladen werden: "+error.message);return;}
-  user=data.session?.user||null;
-  updateAuthUI();
+ if(!supabase)return;
+ const {data,error}=await supabase.auth.getSession();
+ if(error){setAuthMessage("Anmeldestatus konnte nicht geladen werden: "+error.message);return}
+ user=data.session?.user||null;updateAuthUI()
 }
 $("login").addEventListener("click",async()=>{
-  if(!supabase)return;
-  const email=$("email").value.trim(),password=$("password").value;
-  if(!email||!password){setAuthMessage("Bitte E-Mail-Adresse und Passwort eingeben.");return;}
-  $("login").disabled=true;setAuthMessage("Anmeldung läuft...");
-  const {data,error}=await supabase.auth.signInWithPassword({email,password});
-  $("login").disabled=false;
-  if(error){setAuthMessage("Anmeldung fehlgeschlagen: "+error.message);return;}
-  user=data.user;updateAuthUI();setAuthMessage("Du bist angemeldet.");
+ if(!supabase)return;
+ const email=$("email").value.trim(),password=$("password").value;
+ if(!email||!password){setAuthMessage("Bitte E-Mail-Adresse und Passwort eingeben.");return}
+ $("login").disabled=true;setAuthMessage("Anmeldung läuft...");
+ const {data,error}=await supabase.auth.signInWithPassword({email,password});
+ $("login").disabled=false;
+ if(error){setAuthMessage("Anmeldung fehlgeschlagen: "+error.message);return}
+ user=data.user;updateAuthUI();setAuthMessage("Du bist angemeldet.")
 });
 $("logout").addEventListener("click",async()=>{
-  if(!supabase)return;
-  const {error}=await supabase.auth.signOut();
-  if(error){setAuthMessage("Abmelden fehlgeschlagen: "+error.message);return;}
-  user=null;updateAuthUI();setAuthMessage("Du wurdest abgemeldet.");
+ if(!supabase)return;
+ const {error}=await supabase.auth.signOut();
+ if(error){setAuthMessage("Abmelden fehlgeschlagen: "+error.message);return}
+ user=null;updateAuthUI();setAuthMessage("Du wurdest abgemeldet.")
 });
 if(supabase){
-  supabase.auth.onAuthStateChange((_event,session)=>{
-    user=session?.user||null;updateAuthUI();
-  });
-  refreshSession();
+ supabase.auth.onAuthStateChange((_event,session)=>{user=session?.user||null;updateAuthUI()});
+ refreshSession()
 }
-
 function nextPair(){
-  const used=new Set(cards.map(c=>String(c.pair)));
-  for(let i=1;i<=cards.length+1;i++)if(!used.has(String(i)))return i;
-  return cards.length+1;
+ const used=new Set(cards.map(c=>String(c.pair)));
+ for(let i=1;i<=cards.length+1;i++)if(!used.has(String(i)))return i;
+ return cards.length+1
 }
 function addCard(type,content,pair){
-  if(!user){setMessage("Bitte melde dich als Lehrer an, bevor du Karten erstellst.");return;}
-  cards.push({id:String(nextId++),type,content,pair:String(pair||nextPair())});
-  renderCards();
+ if(!user){setMessage("Bitte melde dich als Lehrer an, bevor du Karten erstellst.");return}
+ cards.push({id:String(nextId++),type,content,pair:String(pair||nextPair())});renderCards()
 }
 function renderCards(){
-  cardsBox.replaceChildren();
-  if(!cards.length){cardsBox.textContent="Noch keine Karten.";return;}
-  cards.forEach(card=>{
-    const box=document.createElement("div");box.className="cardedit";
-    const title=document.createElement("strong");title.textContent=card.type==="image"?"Bildkarte":"Textkarte";box.appendChild(title);
-    if(card.type==="image"){
-      const img=document.createElement("img");img.src=card.content;img.alt="Ausgeschnittenes Bild";box.appendChild(img);
-    }else{
-      const text=document.createElement("textarea");text.value=card.content;text.setAttribute("aria-label","Kartentext");
-      text.addEventListener("input",()=>card.content=text.value);box.appendChild(text);
-    }
-    const label=document.createElement("label");label.textContent="Paar-Nummer";box.appendChild(label);
-    const pair=document.createElement("input");pair.type="number";pair.min="1";pair.step="1";pair.value=card.pair;
-    pair.addEventListener("change",()=>{const n=Number(pair.value);if(Number.isInteger(n)&&n>0)card.pair=String(n);else pair.value=card.pair;});
-    box.appendChild(pair);
-    const del=document.createElement("button");del.textContent="Karte löschen";
-    del.addEventListener("click",()=>{cards=cards.filter(c=>c.id!==card.id);renderCards();});
-    box.appendChild(del);cardsBox.appendChild(box);
-  });
+ cardsBox.replaceChildren();
+ if(!cards.length){cardsBox.textContent="Noch keine Karten.";return}
+ cards.forEach(card=>{
+  const box=document.createElement("div");box.className="cardedit";
+  const heading=document.createElement("strong");heading.textContent="Karte "+card.id;box.appendChild(heading);
+  const label=document.createElement("label");label.textContent="Paar-Nummer";box.appendChild(label);
+  const pair=document.createElement("input");pair.type="number";pair.min="1";pair.value=card.pair;
+  pair.addEventListener("change",()=>{card.pair=String(Math.max(1,Number(pair.value)||1))});box.appendChild(pair);
+  if(card.type==="image"){const img=document.createElement("img");img.src=card.content;img.alt="Ausgewählter Bildbereich";box.appendChild(img)}
+  else{const text=document.createElement("textarea");text.value=card.content;text.placeholder="Text für diese Karte";text.addEventListener("input",()=>card.content=text.value);box.appendChild(text)}
+  const remove=document.createElement("button");remove.textContent="Karte löschen";remove.addEventListener("click",()=>{cards=cards.filter(c=>c!==card);renderCards()});box.appendChild(remove);
+  cardsBox.appendChild(box)
+ })
 }
-$("manual").addEventListener("click",()=>{
-  if(!user){setMessage("Bitte zuerst als Lehrer anmelden.");return;}
-  const text=prompt("Text für deine Memory-Karte:");
-  if(text&&text.trim())addCard("text",text.trim());
-});$("selected").addEventListener("click",()=>{
-  if(!user){$("selectstatus").textContent="Bitte zuerst als Lehrer anmelden.";return;}
-  for(const area of pages.querySelectorAll("textarea")){
-    const text=area.value.slice(area.selectionStart,area.selectionEnd).trim();
-    if(text){addCard("text",text);$("selectstatus").textContent="Textkarte hinzugefügt.";return;}
-  }
-  $("selectstatus").textContent="Markiere zuerst Text im Textfeld einer PDF-Seite.";
+$("manual").addEventListener("click",()=>addCard("text","",nextPair()));
+$("selected").addEventListener("click",()=>{
+ const selection=window.getSelection()?.toString().trim();
+ if(!selection){$("selectstatus").textContent="Markiere zuerst Text im Textfeld einer PDF-Seite.";return}
+ addCard("text",selection,nextPair());$("selectstatus").textContent="Textkarte hinzugefügt."
 });
-
 async function renderPdf(file){
-  pages.replaceChildren();cards=[];nextId=1;renderCards();
-  status.textContent="PDF wird geladen...";
-  if(file.size>20*1024*1024)throw Error("Die PDF ist größer als 20 MB.");
-  const header=new TextDecoder().decode(await file.slice(0,5).arrayBuffer());
-  if(header!=="%PDF-")throw Error("Die Datei ist keine gültige PDF.");
-  const doc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
-  if(doc.numPages>30)throw Error("Bitte nutze höchstens 30 Seiten pro PDF.");
-  for(let n=1;n<=doc.numPages;n++){
-    status.textContent="Lade Seite "+n+" von "+doc.numPages+"...";
-    const page=await doc.getPage(n),base=page.getViewport({scale:1});
-    const scale=Math.min(650/(base.width||650),1.4),viewport=page.getViewport({scale});
-    const canvas=document.createElement("canvas");canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);canvas.className="pdfcanvas";
-    const ctx=canvas.getContext("2d"),wrap=document.createElement("div");wrap.className="page";
-    const heading=document.createElement("h3");heading.textContent="Seite "+n;wrap.appendChild(heading);
-    const canvasWrap=document.createElement("div");canvasWrap.className="canvaswrap";canvasWrap.appendChild(canvas);
-    const overlay=document.createElement("div");overlay.className="crop";
-    const rect=document.createElement("div");rect.className="rect";overlay.appendChild(rect);canvasWrap.appendChild(overlay);wrap.appendChild(canvasWrap);
-    let start=null,selection=null;
-    function pos(e){const r=overlay.getBoundingClientRect();return{x:Math.max(0,Math.min(r.width,e.clientX-r.left)),y:Math.max(0,Math.min(r.height,e.clientY-r.top))};}
-    overlay.addEventListener("pointerdown",e=>{
-      if(!user||studentMode)return;
-      start=pos(e);selection=null;rect.style.display="block";
-      rect.style.left=start.x+"px";rect.style.top=start.y+"px";rect.style.width="0";rect.style.height="0";
-      try{overlay.setPointerCapture(e.pointerId);}catch(_){}
-    });
-    overlay.addEventListener("pointermove",e=>{
-      if(!start)return;const p=pos(e);
-      selection={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y)};
-      rect.style.left=selection.x+"px";rect.style.top=selection.y+"px";rect.style.width=selection.w+"px";rect.style.height=selection.h+"px";
-    });
-    async function finish(){
-      if(!start)return;start=null;
-      if(!selection||selection.w<8||selection.h<8){rect.style.display="none";return;}
-      const r=canvas.getBoundingClientRect();
-      const x=Math.max(0,Math.floor(selection.x*canvas.width/r.width)),y=Math.max(0,Math.floor(selection.y*canvas.height/r.height));
-      const w=Math.min(canvas.width-x,Math.ceil(selection.w*canvas.width/r.width)),h=Math.min(canvas.height-y,Math.ceil(selection.h*canvas.height/r.height));
-      const crop=document.createElement("canvas");crop.width=w;crop.height=h;
-      crop.getContext("2d").drawImage(canvas,x,y,w,h,0,0,w,h);
-      try{addCard("image",crop.toDataURL("image/jpeg",.85));$("selectstatus").textContent="Bildbereich als Karte hinzugefügt.";}
-      catch(err){$("selectstatus").textContent="Bild konnte nicht gespeichert werden.";}
-      rect.style.display="none";
-    }
-    overlay.addEventListener("pointerup",finish);overlay.addEventListener("pointercancel",finish);
-    const label=document.createElement("h4");label.textContent="Text dieser Seite";wrap.appendChild(label);
-    const area=document.createElement("textarea");area.placeholder="Text wird geladen...";area.setAttribute("aria-label","PDF-Seitentext");wrap.appendChild(area);
-    pages.appendChild(wrap);
-    await page.render({canvasContext:ctx,viewport}).promise;
-    const text=await page.getTextContent();area.value=text.items.filter(i=>typeof i.str==="string").map(i=>i.str).join(" ");
+ if(!user){status.textContent="Bitte melde dich zuerst als Lehrer an.";return}
+ if(file.type!=="application/pdf"&&!file.name.toLowerCase().endsWith(".pdf")){status.textContent="Bitte wähle eine PDF-Datei.";return}
+ status.textContent="PDF wird geladen...";pages.replaceChildren();
+ const bytes=await file.arrayBuffer();
+ const doc=await pdfjsLib.getDocument({data:bytes}).promise;
+ for(let n=1;n<=doc.numPages;n++){
+  const page=await doc.getPage(n),viewport=page.getViewport({scale:1.35});
+  const wrap=document.createElement("div");wrap.className="page";
+  const title=document.createElement("h3");title.textContent="Seite "+n;wrap.appendChild(title);
+  const canvasWrap=document.createElement("div");canvasWrap.className="canvaswrap";
+  const canvas=document.createElement("canvas");canvas.className="pdfcanvas";
+  const ctx=canvas.getContext("2d");canvas.width=viewport.width;canvas.height=viewport.height;
+  const overlay=document.createElement("div");overlay.className="crop";
+  const rect=document.createElement("div");rect.className="rect";overlay.appendChild(rect);
+  canvasWrap.appendChild(canvas);canvasWrap.appendChild(overlay);wrap.appendChild(canvasWrap);
+  let start=null,selection=null;
+  function pos(e){const r=overlay.getBoundingClientRect();return{x:Math.max(0,Math.min(r.width,e.clientX-r.left)),y:Math.max(0,Math.min(r.height,e.clientY-r.top))}}
+  overlay.addEventListener("pointerdown",e=>{
+   if(!user||studentMode)return;
+   start=pos(e);selection=null;rect.style.display="block";
+   rect.style.left=start.x+"px";rect.style.top=start.y+"px";rect.style.width="0";rect.style.height="0";
+   try{overlay.setPointerCapture(e.pointerId)}catch(_){}
+  });
+  overlay.addEventListener("pointermove",e=>{
+   if(!start)return;const p=pos(e);
+   selection={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y)};
+   rect.style.left=selection.x+"px";rect.style.top=selection.y+"px";rect.style.width=selection.w+"px";rect.style.height=selection.h+"px"
+  });
+  async function finish(){
+   if(!start)return;start=null;
+   if(!selection||selection.w<8||selection.h<8){rect.style.display="none";return}
+   const r=canvas.getBoundingClientRect();
+   const x=Math.max(0,Math.floor(selection.x*canvas.width/r.width)),y=Math.max(0,Math.floor(selection.y*canvas.height/r.height));
+   const w=Math.min(canvas.width-x,Math.ceil(selection.w*canvas.width/r.width)),h=Math.min(canvas.height-y,Math.ceil(selection.h*canvas.height/r.height));
+   const crop=document.createElement("canvas");crop.width=w;crop.height=h;
+   crop.getContext("2d").drawImage(canvas,x,y,w,h,0,0,w,h);
+   try{addCard("image",crop.toDataURL("image/jpeg",.85));$("selectstatus").textContent="Bildbereich als Karte hinzugefügt."}
+   catch(err){$("selectstatus").textContent="Bild konnte nicht gespeichert werden."}
+   rect.style.display="none"
   }
-  status.textContent="PDF geladen: "+file.name+" ("+doc.numPages+" Seiten).";
-  updateAuthUI();
+  overlay.addEventListener("pointerup",finish);overlay.addEventListener("pointercancel",finish);
+  const label=document.createElement("h4");label.textContent="Text dieser Seite";wrap.appendChild(label);
+  const area=document.createElement("textarea");area.placeholder="Text wird geladen...";area.setAttribute("aria-label","PDF-Seitentext");wrap.appendChild(area);
+  pages.appendChild(wrap);
+  await page.render({canvasContext:ctx,viewport}).promise;
+  const text=await page.getTextContent();area.value=text.items.filter(i=>typeof i.str==="string").map(i=>i.str).join(" ")
+ }
+ status.textContent="PDF geladen: "+file.name+" ("+doc.numPages+" Seiten).";updateAuthUI()
 }
 pdfInput.addEventListener("change",async()=>{
-  try{const file=pdfInput.files[0];if(!file){status.textContent="Keine PDF ausgewählt.";return;}await renderPdf(file);}
-  catch(err){console.error(err);pages.replaceChildren();status.textContent="Fehler: "+err.message;}
+ try{const file=pdfInput.files[0];if(!file){status.textContent="Keine PDF ausgewählt.";return}await renderPdf(file)}
+ catch(err){console.error(err);pages.replaceChildren();status.textContent="Fehler: "+err.message}
 });
-
 function validPairs(){
-  const groups={};
-  cards.forEach(c=>{
-    if(c.type==="text"&&!c.content.trim())return;
-    (groups[c.pair]||(groups[c.pair]=[])).push(c);
-  });
-  return Object.entries(groups).filter(([,g])=>g.length===2).map(([pair,g])=>({pair,cards:g}));
+ const groups={};
+ cards.forEach(c=>{
+  if(c.type==="text"&&!c.content.trim())return;
+  (groups[c.pair]||(groups[c.pair]=[])).push(c)
+ });
+ return Object.entries(groups).filter(([,g])=>g.length===2).map(([pair,g])=>({pair,cards:g}))
 }
 function shuffled(a){
-  const result=a.slice();
-  for(let i=result.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[result[i],result[j]]=[result[j],result[i]];}
-  return result;
+ const result=a.slice();
+ for(let i=result.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[result[i],result[j]]=[result[j],result[i]]}
+ return result
 }
 function startGame(){
-  const pairs=validPairs();
-  if(!pairs.length){setMessage("Erstelle mindestens ein Paar aus genau zwei Karten mit gleicher Nummer.");return;}
-  const limit=Number($("limit").value),chosen=shuffled(pairs).slice(0,limit);
-  selectedPairCount=chosen.length;
-  deck=shuffled(chosen.flatMap(group=>group.cards.map(c=>({...c,gamePair:group.pair,unique:c.id+"-"+Math.random()}))));
-  turns=0;found=new Set();open=[];busy=false;
-  $("game").classList.remove("hidden");$("grid").className=$("size").value;
-  $("editorSection").classList.add("hidden");$("uploadSection").classList.add("hidden");
-  $("gameTitleHeading").textContent=$("gameTitle").value.trim()||"Memory spielen";
-  $("gameStatus").textContent="";
-  renderGame();
+ const pairs=validPairs();
+ if(!pairs.length){setMessage("Erstelle mindestens ein Paar aus genau zwei Karten mit gleicher Nummer.");return}
+ const limit=Number($("limit").value),chosen=shuffled(pairs).slice(0,limit);
+ selectedPairCount=chosen.length;
+ deck=shuffled(chosen.flatMap(group=>group.cards.map(c=>({...c,gamePair:group.pair,unique:c.id+"-"+Math.random()}))));
+ turns=0;found=new Set();open=[];busy=false;
+ $("game").classList.remove("hidden");$("grid").className=$("size").value;
+ $("editorSection").classList.add("hidden");$("uploadSection").classList.add("hidden");
+ $("gameTitleHeading").textContent=$("gameTitle").value.trim()||"Memory spielen";
+ $("gameStatus").textContent="";renderGame()
 }
 function renderGame(){
-  const grid=$("grid");grid.replaceChildren();
-  deck.forEach(card=>{
-    const button=document.createElement("button");button.className="tile back";button.textContent="?";
-    button.setAttribute("aria-label","Verdeckte Memory-Karte");
-    button.addEventListener("click",()=>flip(card,button));card.button=button;grid.appendChild(button);
-  });
-  updateScore();
+ const grid=$("grid");grid.replaceChildren();
+ deck.forEach(card=>{
+  const button=document.createElement("button");button.className="tile back";button.textContent="?";
+  button.setAttribute("aria-label","Verdeckte Memory-Karte");
+  button.addEventListener("click",()=>flip(card,button));card.button=button;grid.appendChild(button)
+ });
+ updateScore()
 }
-function updateScore(){$("score").textContent="Züge: "+turns+" · Paare: "+found.size;}
+function updateScore(){$("score").textContent="Züge: "+turns+" · Paare: "+found.size}
 function flip(card,button){
-  if(busy||found.has(card.gamePair)||open.includes(card))return;
-  button.className="tile front";button.replaceChildren();
-  if(card.type==="image"){const img=document.createElement("img");img.src=card.content;img.alt="Memory-Bild";button.appendChild(img);}
-  else button.textContent=card.content;
-  open.push(card);
-  if(open.length!==2)return;
-  turns++;
-  if(open[0].gamePair===open[1].gamePair){
-    found.add(card.gamePair);open.forEach(c=>{c.button.className="tile front";c.button.disabled=true;});
-    open=[];updateScore();
-    if(found.size===selectedPairCount)$("gameStatus").textContent="Geschafft! Du hast alle Paare gefunden.";
-    return;
-  }
-  busy=true;const previous=open.slice();
-  setTimeout(()=>{
-    previous.forEach(c=>{c.button.className="tile back";c.button.textContent="?";});    open=[];busy=false;updateScore();
-  },850);
-  updateScore();
+ if(busy||found.has(card.gamePair)||open.includes(card))return;
+ button.className="tile front";button.replaceChildren();
+ if(card.type==="image"){const img=document.createElement("img");img.src=card.content;img.alt="Memory-Bild";button.appendChild(img)}
+ else button.textContent=card.content;
+ open.push(card);if(open.length!==2)return;
+ turns++;
+ if(open[0].gamePair===open[1].gamePair){
+  found.add(card.gamePair);open.forEach(c=>{c.button.className="tile front";c.button.disabled=true});
+  open=[];updateScore();
+  if(found.size===selectedPairCount)$("gameStatus").textContent="Geschafft! Du hast alle Paare gefunden.";
+  return
+ }
+ busy=true;const previous=open.slice();
+ setTimeout(()=>{
+  previous.forEach(c=>{c.button.className="tile back";c.button.textContent="?"});
+  open=[];busy=false;updateScore()
+ },850);
+ updateScore()
 }
 $("play").addEventListener("click",startGame);
 $("restart").addEventListener("click",startGame);
 $("back").addEventListener("click",()=>{
-  if(studentMode){$("game").classList.add("hidden");$("studentNotice").classList.remove("hidden");return;}
-  $("game").classList.add("hidden");$("editorSection").classList.remove("hidden");$("uploadSection").classList.remove("hidden");
+ if(studentMode){$("game").classList.add("hidden");$("studentNotice").classList.remove("hidden");return}
+ $("game").classList.add("hidden");$("editorSection").classList.remove("hidden");$("uploadSection").classList.remove("hidden")
 });
-
 function dataUrlToBlob(dataUrl){
-  const parts=dataUrl.split(","),mime=(parts[0].match(/:(.*?);/)||[])[1]||"image/jpeg";
-  const binary=atob(parts[1]),bytes=new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-  return new Blob([bytes],{type:mime});
+ const parts=dataUrl.split(","),mime=(parts[0].match(/:(.*?);/)||[])[1]||"image/jpeg";
+ const binary=atob(parts[1]),bytes=new Uint8Array(binary.length);
+ for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+ return new Blob([bytes],{type:mime})
 }
 async function uploadImages(gameId,cardData){
-  const output=[];
-  for(let i=0;i<cardData.length;i++){
-    const card=cardData[i];
-    if(card.type!=="image"||!card.content.startsWith("data:image/")){output.push(card);continue;}
-    const path=gameId+"/"+crypto.randomUUID()+".jpg";
-    const blob=dataUrlToBlob(card.content);
-    const {error}=await supabase.storage.from(BUCKET).upload(path,blob,{contentType:blob.type||"image/jpeg",upsert:false});
-    if(error)throw Error("Bild-Upload fehlgeschlagen: "+error.message);
-    const {data}=supabase.storage.from(BUCKET).getPublicUrl(path);
-    output.push({...card,content:data.publicUrl});
-  }
-  return output;
+ const output=[];
+ for(let i=0;i<cardData.length;i++){
+  const card=cardData[i];
+  if(card.type!=="image"||!card.content.startsWith("data:image/")){output.push(card);continue}
+  const path=gameId+"/"+crypto.randomUUID()+".jpg",blob=dataUrlToBlob(card.content);
+  const {error}=await supabase.storage.from(BUCKET).upload(path,blob,{contentType:blob.type||"image/jpeg",upsert:false});
+  if(error)throw Error("Bild-Upload fehlgeschlagen: "+error.message);
+  const {data}=supabase.storage.from(BUCKET).getPublicUrl(path);
+  output.push({...card,content:data.publicUrl})
+ }
+ return output
 }
 $("share").addEventListener("click",async()=>{
-  if(!supabase||!user){setMessage("Bitte melde dich als Lehrer an, bevor du ein Spiel speicherst.");return;}
-  const pairs=validPairs();
-  if(!pairs.length){setMessage("Du brauchst mindestens ein gültiges Paar aus genau zwei Karten.");return;}
-  const title=$("gameTitle").value.trim()||"Mein Memory";
-  if(title.length>200){setMessage("Der Spielname darf höchstens 200 Zeichen lang sein.");return;}
-  const btn=$("share");btn.disabled=true;setMessage("Spiel und Bilder werden gespeichert...");
-  try{
-    const gameId=crypto.randomUUID();
-    const storedCards=await uploadImages(gameId,cards.map(c=>({id:c.id,type:c.type,content:c.content,pair:String(c.pair)})));
-    const {error}=await supabase.from("memory_games").insert({id:gameId,title,cards:storedCards});
-    if(error)throw Error("Spiel konnte nicht gespeichert werden: "+error.message);
-    const url=new URL(location.href);url.hash="";url.searchParams.set("game",gameId);
-    $("link").value=url.href;$("sharebox").classList.remove("hidden");
-    setMessage("Spiel gespeichert. Du kannst den Link jetzt kopieren und teilen.");
-  }catch(err){console.error(err);setMessage(err.message||"Speichern fehlgeschlagen. Bitte prüfe deine Supabase-Einstellungen.");}
-  finally{btn.disabled=!user;}
+ if(!supabase||!user){setMessage("Bitte melde dich als Lehrer an, bevor du ein Spiel speicherst.");return}
+ const pairs=validPairs();
+ if(!pairs.length){setMessage("Du brauchst mindestens ein gültiges Paar aus genau zwei Karten.");return}
+ const title=$("gameTitle").value.trim()||"Mein Memory";
+ if(title.length>200){setMessage("Der Spielname darf höchstens 200 Zeichen lang sein.");return}
+ const btn=$("share");btn.disabled=true;setMessage("Spiel und Bilder werden gespeichert...");
+ try{
+  const gameId=crypto.randomUUID();
+  const storedCards=await uploadImages(gameId,cards.map(c=>({id:c.id,type:c.type,content:c.content,pair:String(c.pair)})));
+  const {error}=await supabase.from("memory_games").insert({id:gameId,title,cards:storedCards});
+  if(error)throw Error("Spiel konnte nicht gespeichert werden: "+error.message);
+  const url=new URL(location.href);url.hash="";url.searchParams.set("game",gameId);
+  $("link").value=url.href;$("sharebox").classList.remove("hidden");
+  setMessage("Spiel gespeichert. Du kannst den Link jetzt kopieren und teilen.")
+ }catch(err){console.error(err);setMessage(err.message||"Speichern fehlgeschlagen. Bitte prüfe deine Supabase-Einstellungen.")}
+ finally{btn.disabled=!user}
 });
 $("copy").addEventListener("click",async()=>{
-  try{await navigator.clipboard.writeText($("link").value);setMessage("Link kopiert.");}
-  catch(err){$("link").select();setMessage("Markiere den Link und kopiere ihn manuell.");}
-});async function loadSharedGame(){
-  const params=new URLSearchParams(location.search),gameId=params.get("game");
-  if(!gameId)return;
-  studentMode=true;
-  $("authSection").classList.add("hidden");
-  $("uploadSection").classList.add("hidden");
-  $("editorSection").classList.add("hidden");
-  $("studentNotice").classList.remove("hidden");
-  $("game").classList.remove("hidden");
-  $("back").textContent="Spielansicht";
-  $("restart").disabled=true;
-  $("score").textContent="Spiel wird geladen...";
-  if(!supabase){$("gameStatus").textContent="Die Supabase-Verbindung ist noch nicht eingerichtet.";return;}
-  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(gameId)){
-    $("gameStatus").textContent="Dieser Spiel-Link ist ungültig.";return;
-  }
-  const {data,error}=await supabase.from("memory_games").select("id,title,cards").eq("id",gameId).maybeSingle();
-  if(error||!data){$("gameStatus").textContent="Spiel nicht gefunden oder nicht öffentlich lesbar.";return;}
-  if(!Array.isArray(data.cards)||data.cards.length>100){$("gameStatus").textContent="Die gespeicherten Spieldaten sind ungültig.";return;}
-  cards=[];nextId=1;
-  for(const c of data.cards){
-    if(!c||!["text","image"].includes(c.type)||typeof c.content!=="string"||typeof c.pair!=="string"){
-      $("gameStatus").textContent="Das gespeicherte Spiel enthält ungültige Karten.";return;
-    }
-    cards.push({id:String(nextId++),type:c.type,content:c.content,pair:c.pair});
-  }
-  $("gameTitleHeading").textContent=data.title||"Memory spielen";
-  $("size").value="medium";$("limit").value=String(Math.min(15,Math.max(3,validPairs().length)));
-  $("restart").disabled=false;
-  startGame();
-  $("studentNotice").classList.add("hidden");
-  $("back").classList.add("hidden");
-}
-loadSharedGame();
-})();
-</script>
-</body>
-</html>
+ try{await navigator.clipboard.writeText($("link").value);setMessage("Link kopiert.")}
+ catch(err){$("link").select();setMess
