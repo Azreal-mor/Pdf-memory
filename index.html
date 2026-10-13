@@ -1,0 +1,416 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PDF Memory</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f4fb;color:#22243a;font-family:Arial,sans-serif}
+header{background:#6558e8;color:white;text-align:center;padding:24px 12px}
+main{max-width:850px;margin:20px auto;padding:0 12px}
+section{background:white;padding:16px;margin-bottom:16px;border-radius:14px}
+h2{font-size:20px}
+button,input,textarea,select{font:inherit}
+button{border:0;border-radius:8px;background:#6558e8;color:white;padding:11px;cursor:pointer}
+button:disabled{opacity:.5}
+input,textarea,select{width:100%;padding:10px;margin:6px 0 12px;border:1px solid #ccc;border-radius:8px;background:white}
+label{display:block;font-weight:bold;margin-top:8px}
+.hint{font-size:14px;color:#666;line-height:1.5}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.toolbar button{flex:1 1 140px}
+.page{border-top:1px solid #ddd;padding-top:12px;margin-top:18px}
+.pdfcanvas{width:100%;height:auto;display:block}
+.canvaswrap{position:relative;touch-action:none}
+.crop{position:absolute;inset:0;touch-action:none}
+.rect{position:absolute;border:2px dashed #6558e8;background:#6558e833;display:none;pointer-events:none}
+.cardedit{border:1px solid #ddd;padding:12px;border-radius:10px;margin:12px 0}
+.cardedit img{width:100%;max-height:160px;object-fit:contain}
+#grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+#grid.small{grid-template-columns:repeat(4,minmax(0,1fr))}
+#grid.large{grid-template-columns:repeat(2,minmax(0,1fr))}
+.tile{aspect-ratio:1;min-width:0;overflow-wrap:anywhere;display:flex;align-items:center;justify-content:center;text-align:center;padding:5px;font-weight:bold;font-size:15px}
+.tile img{width:100%;height:100%;object-fit:contain}
+.back{background:#6558e8;color:white}
+.front{background:white;color:#22243a;border:2px solid #6558e8}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<header>
+<h1>🧠 PDF Memory</h1>
+<p>Unterrichtsmaterial auswählen und Lernspiele erstellen</p>
+</header>
+<main>
+<section>
+<h2>1. PDF laden</h2>
+<input id="pdf" type="file" accept=".pdf,application/pdf">
+<p id="status" aria-live="polite">Wähle eine PDF aus.</p>
+<div id="pages"></div>
+</section>
+
+<section>
+<h2>2. Karten erstellen</h2>
+<p class="hint">Markiere Text im Textfeld einer PDF-Seite und nutze die Text-Schaltfläche. Für Bilder ziehst du mit dem Finger einen Rahmen über den gewünschten Bereich.</p>
+<label for="size">Kartengröße</label>
+<select id="size">
+<option value="small">Klein</option>
+<option value="medium" selected>Mittel</option>
+<option value="large">Groß</option>
+</select>
+<label for="limit">Gewünschte Paare im Spiel</label>
+<select id="limit">
+<option>3</option><option selected>6</option><option>10</option><option>15</option>
+</select>
+<div class="toolbar">
+<button id="manual">+ Textkarte</button>
+<button id="selected" disabled>Markierten Text hinzufügen</button>
+</div>
+<p id="selectstatus" class="hint"></p>
+<h3>Deine Karten</h3>
+<p class="hint">Gib zusammengehörigen Karten dieselbe Paar-Nummer. Ein Paar besteht aus genau zwei Karten.</p>
+<div id="cards"></div>
+<div class="toolbar">
+<button id="play">Memory starten</button>
+<button id="share">Spiel-Link erstellen</button>
+</div>
+<p id="message" aria-live="polite"></p>
+<div id="sharebox" class="hidden">
+<label for="link">Spiel-Link</label>
+<textarea id="link" readonly></textarea>
+<button id="copy">Link kopieren</button>
+<p class="hint">Der Link enthält die Kartendaten. Große Spiele mit vielen Bildern können zu lang für eine URL werden.</p>
+</div>
+</section>
+
+<section id="game" class="hidden">
+<h2>3. Memory spielen</h2>
+<p id="score">Züge: 0 · Paare: 0</p>
+<div id="grid"></div>
+<div class="toolbar">
+<button id="restart">Neu mischen</button>
+<button id="back">Zum Editor</button>
+</div>
+</section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+(() => {
+"use strict";
+const $=id=>document.getElementById(id);
+const pdfInput=$("pdf"),pages=$("pages"),status=$("status");
+const cardsBox=$("cards"),message=$("message");
+let cards=[],nextId=1,selectedFile=null,turns=0,found=new Set();
+let deck=[],open=[],busy=false;
+
+if(!window.pdfjsLib){
+status.textContent="PDF-Bibliothek nicht geladen. Prüfe deine Internetverbindung.";
+pdfInput.disabled=true;return;
+}
+pdfjsLib.GlobalWorkerOptions.workerSrc=
+"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+function addCard(type,content,pair){
+cards.push({id:String(nextId++),type,content,
+pair:String(pair||nextPair())});
+renderCards();
+}
+function nextPair(){
+const counts={};
+cards.forEach(c=>counts[c.pair]=(counts[c.pair]||0)+1);
+for(let i=1;i<=cards.length+1;i++){
+if(!counts[String(i)])return i;
+}
+return 1;
+}
+function renderCards(){
+cardsBox.replaceChildren();
+if(!cards.length){
+cardsBox.textContent="Noch keine Karten.";
+return;
+}
+cards.forEach(card=>{
+const box=document.createElement("div");
+box.className="cardedit";
+const title=document.createElement("strong");
+title.textContent=card.type==="image"?"Bildkarte":"Textkarte";
+box.appendChild(title);
+if(card.type==="image"){
+const img=document.createElement("img");
+img.src=card.content;img.alt="Ausgeschnittenes Bild";
+box.appendChild(img);
+}else{
+const text=document.createElement("textarea");
+text.value=card.content;text.setAttribute("aria-label","Kartentext");
+text.addEventListener("input",()=>card.content=text.value);
+box.appendChild(text);
+}
+const label=document.createElement("label");
+label.textContent="Paar-Nummer";
+box.appendChild(label);
+const pair=document.createElement("input");
+pair.type="number";pair.min="1";pair.step="1";pair.value=card.pair;
+pair.addEventListener("change",()=>{
+const n=Number(pair.value);
+if(Number.isInteger(n)&&n>0)card.pair=String(n);
+else pair.value=card.pair;
+});
+box.appendChild(pair);
+const del=document.createElement("button");
+del.textContent="Karte löschen";
+del.addEventListener("click",()=>{
+cards=cards.filter(c=>c.id!==card.id);renderCards();
+});
+box.appendChild(del);cardsBox.appendChild(box);
+});
+}
+$("manual").addEventListener("click",()=>{
+const text=prompt("Text für deine Memory-Karte:");
+if(text&&text.trim())addCard("text",text.trim());
+});
+$("selected").addEventListener("click",()=>{
+const areas=pages.querySelectorAll("textarea");
+for(const area of areas){
+const text=area.value.slice(area.selectionStart,area.selectionEnd).trim();
+if(text){addCard("text",text);$("selectstatus").textContent="Textkarte hinzugefügt.";return;}
+}
+$("selectstatus").textContent="Markiere zuerst Text im Textfeld einer PDF-Seite.";
+});
+
+async function renderPdf(file){
+pages.replaceChildren();
+cards=[];
+nextId=1;renderCards();
+status.textContent="PDF wird geladen...";
+if(file.size>20*1024*1024)throw Error("Die PDF ist größer als 20 MB.");
+const header=new TextDecoder().decode(await file.slice(0,5).arrayBuffer());
+if(header!=="%PDF-")throw Error("Die Datei ist keine gültige PDF.");
+const doc=await pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+if(doc.numPages>30)throw Error("Bitte nutze höchstens 30 Seiten pro PDF.");
+for(let n=1;n<=doc.numPages;n++){
+status.textContent="Lade Seite "+n+" von "+doc.numPages+"...";
+const page=await doc.getPage(n);
+const base=page.getViewport({scale:1});
+const scale=Math.min(650/(base.width||650),1.4);
+const viewport=page.getViewport({scale});
+const canvas=document.createElement("canvas");
+canvas.width=Math.ceil(viewport.width);
+canvas.height=Math.ceil(viewport.height);
+canvas.className="pdfcanvas";
+const ctx=canvas.getContext("2d");
+const wrap=document.createElement("div");
+wrap.className="page";
+const heading=document.createElement("h3");
+heading.textContent="Seite "+n;wrap.appendChild(heading);
+const canvasWrap=document.createElement("div");
+canvasWrap.className="canvaswrap";
+canvasWrap.appendChild(canvas);
+const overlay=document.createElement("div");
+overlay.className="crop";
+const rect=document.createElement("div");
+rect.className="rect";
+overlay.appendChild(rect);canvasWrap.appendChild(overlay);
+wrap.appendChild(canvasWrap);
+
+let start=null,selection=null;
+function pos(e){
+const r=overlay.getBoundingClientRect();
+return {x:Math.max(0,Math.min(r.width,e.clientX-r.left)),
+y:Math.max(0,Math.min(r.height,e.clientY-r.top))};
+}
+overlay.addEventListener("pointerdown",e=>{
+start=pos(e);selection=null;
+rect.style.display="block";
+rect.style.left=start.x+"px";rect.style.top=start.y+"px";
+rect.style.width="0";rect.style.height="0";
+overlay.setPointerCapture(e.pointerId);
+});
+overlay.addEventListener("pointermove",e=>{
+if(!start)return;
+const p=pos(e);
+selection={x:Math.min(start.x,p.x),y:Math.min(start.y,p.y),
+w:Math.abs(p.x-start.x),h:Math.abs(p.y-start.y)};
+rect.style.left=selection.x+"px";rect.style.top=selection.y+"px";
+rect.style.width=selection.w+"px";rect.style.height=selection.h+"px";
+});
+async function finish(){
+if(!start)return;
+start=null;
+if(!selection||selection.w<8||selection.h<8){
+rect.style.display="none";return;
+}
+const r=canvas.getBoundingClientRect();
+const x=Math.max(0,Math.floor(selection.x*canvas.width/r.width));
+const y=Math.max(0,Math.floor(selection.y*canvas.height/r.height));
+const w=Math.min(canvas.width-x,Math.ceil(selection.w*canvas.width/r.width));
+const h=Math.min(canvas.height-y,Math.ceil(selection.h*canvas.height/r.height));
+const crop=document.createElement("canvas");
+crop.width=w;crop.height=h;
+crop.getContext("2d").drawImage(canvas,x,y,w,h,0,0,w,h);
+try{
+addCard("image",crop.toDataURL("image/jpeg",.85));
+$("selectstatus").textContent="Bildbereich als Karte hinzugefügt.";
+}catch(err){$("selectstatus").textContent="Bild konnte nicht gespeichert werden.";}
+rect.style.display="none";
+}
+overlay.addEventListener("pointerup",finish);
+overlay.addEventListener("pointercancel",finish);
+
+const label=document.createElement("h4");
+label.textContent="Text dieser Seite";wrap.appendChild(label);
+const area=document.createElement("textarea");
+area.placeholder="Text wird geladen...";
+area.setAttribute("aria-label","PDF-Seitentext");
+wrap.appendChild(area);
+pages.appendChild(wrap);
+await page.render({canvasContext:ctx,viewport}).promise;
+const text=await page.getTextContent();
+area.value=text.items.filter(i=>typeof i.str==="string").map(i=>i.str).join(" ");
+}
+status.textContent="PDF geladen: "+file.name+" ("+doc.numPages+" Seiten).";
+$("selected").disabled=false;
+}
+pdfInput.addEventListener("change",async()=>{
+selectedFile=null;$("selected").disabled=true;
+try{
+const file=pdfInput.files[0];
+if(!file){status.textContent="Keine PDF ausgewählt.";return;}
+await renderPdf(file);selectedFile=file;
+}catch(err){
+console.error(err);pages.replaceChildren();
+status.textContent="Fehler: "+err.message;
+}
+});
+
+function validPairs(){
+const groups={};
+cards.forEach(c=>{
+if(c.type==="text"&&!c.content.trim())return;
+(groups[c.pair]||(groups[c.pair]=[])).push(c);
+});
+return Object.values(groups).filter(g=>g.length===2);
+}
+function shuffled(a){
+const result=a.slice();
+for(let i=result.length-1;i>0;i--){
+const j=Math.floor(Math.random()*(i+1));
+[result[i],result[j]]=[result[j],result[i]];
+}
+return result;
+}
+function startGame(){
+const pairs=validPairs();
+if(!pairs.length){
+message.textContent="Erstelle mindestens ein Paar aus genau zwei Karten mit gleicher Nummer.";
+return;
+}
+const limit=Number($("limit").value);
+const chosen=shuffled(pairs).slice(0,limit);
+deck=shuffled(chosen.flatMap(g=>g.map(c=>({...c,unique:c.id+"-"+Math.random()}))));
+turns=0;found=new Set();open=[];busy=false;
+$("game").classList.remove("hidden");
+$("grid").className=$("size").value;
+$("editorSection").classList.add("hidden");
+$("uploadSection").classList.add("hidden");
+renderGame();
+}
+function renderGame(){
+const grid=$("grid");grid.replaceChildren();
+deck.forEach(card=>{
+const button=document.createElement("button");
+button.className="tile back";
+button.textContent="?";
+button.setAttribute("aria-label","Verdeckte Memory-Karte");
+button.addEventListener("click",()=>flip(card,button));
+card.button=button;grid.appendChild(button);
+});
+updateScore();
+}
+function updateScore(){
+$("score").textContent="Züge: "+turns+" · Paare: "+found.size;
+}
+function flip(card,button){
+if(busy||found.has(card.pair)||open.includes(card))return;
+button.className="tile front";
+button.replaceChildren();
+if(card.type==="image"){
+const img=document.createElement("img");img.src=card.content;img.alt="Memory-Bild";
+button.appendChild(img);
+}else button.textContent=card.content;
+open.push(card);
+if(open.length!==2)return;
+turns++;
+if(open[0].pair===open[1].pair){
+found.add(card.pair);open.forEach(c=>c.button.className="tile front");
+open=[];
+updateScore();
+if(found.size===validPairs().slice(0,Number($("limit").value)).length)
+gameStatus.textContent="Geschafft! Du hast alle Paare gefunden.";
+return;
+}
+busy=true;
+const previous=open.slice();
+setTimeout(()=>{
+previous.forEach(c=>{
+c.button.className="tile back";c.button.textContent="?";
+});
+open=[];busy=false;updateScore();
+},850);
+updateScore();
+}
+$("play").addEventListener("click",startGame);
+$("restart").addEventListener("click",startGame);
+$("back").addEventListener("click",()=>{
+$("game").classList.add("hidden");
+$("editorSection").classList.remove("hidden");
+$("uploadSection").classList.remove("hidden");
+});
+$("share").addEventListener("click",()=>{
+try{
+const data=cards.map(c=>({type:c.type,content:c.content,pair:c.pair}));
+const encoded=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+const url=new URL(location.href);
+url.hash="game="+encoded;
+$("link").value=url.href;
+$("sharebox").classList.remove("hidden");
+message.textContent="Link erstellt. Teste ihn in einem neuen Browserfenster.";
+}catch(err){
+message.textContent="Der Link konnte nicht erstellt werden. Das Spiel ist möglicherweise zu groß.";
+}
+});
+$("copy").addEventListener("click",async()=>{
+try{
+await navigator.clipboard.writeText($("link").value);
+message.textContent="Link kopiert.";
+}catch(err){
+$("link").select();
+message.textContent="Markiere den Link und kopiere ihn manuell.";
+}
+});
+function loadShared(){
+if(!location.hash.startsWith("#game="))return;
+try{
+const raw=decodeURIComponent(escape(atob(location.hash.slice(6))));
+const data=JSON.parse(raw);
+if(!Array.isArray(data)||data.length>100)throw Error();
+cards=[];
+nextId=1;
+data.forEach(c=>{
+if(!c||!["text","image"].includes(c.type)||
+typeof c.content!=="string"||c.content.length>2000000||
+typeof c.pair!=="string")throw Error();
+cards.push({id:String(nextId++),type:c.type,content:c.content,pair:c.pair});
+});
+renderCards();
+$("editorSection").scrollIntoView();
+message.textContent="Geteiltes Spiel geladen. Du kannst es direkt starten.";
+}catch(err){
+message.textContent="Der Spiel-Link ist ungültig oder die Daten sind zu groß.";
+}
+}
+loadShared();
+})();
+</script>
+</body>
+</html>
