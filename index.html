@@ -43,15 +43,16 @@ label{display:block;font-weight:bold;margin-top:8px}
 <p>Unterrichtsmaterial auswählen und Lernspiele erstellen</p>
 </header>
 <main>
-<section>
-<h2>1. PDF laden</h2>
+
+<section id="uploadSection">
 <input id="pdf" type="file" accept=".pdf,application/pdf">
 <p id="status" aria-live="polite">Wähle eine PDF aus.</p>
 <div id="pages"></div>
 </section>
 
-<section>
-<h2>2. Karten erstellen</h2>
+
+<section id="editorSection">
+
 <p class="hint">Markiere Text im Textfeld einer PDF-Seite und nutze die Text-Schaltfläche. Für Bilder ziehst du mit dem Finger einen Rahmen über den gewünschten Bereich.</p>
 <label for="size">Kartengröße</label>
 <select id="size">
